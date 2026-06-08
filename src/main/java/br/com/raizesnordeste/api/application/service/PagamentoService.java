@@ -26,6 +26,7 @@ public class PagamentoService {
     private final PagamentoRepository pagamentoRepository;
     private final PagamentoMockService mockService;
     private final PedidoService pedidoService;
+    private final FidelidadeService fidelidadeService;
     private final AuditService auditService;
 
     @Transactional
@@ -38,14 +39,14 @@ public class PagamentoService {
         Pedido pedido = pedidoRepository.findById(pedidoId)
                 .orElseThrow(() -> new RecursoNaoEncontradoException("Pedido", pedidoId));
 
-        // só processa pedidos aguardando pagamento
+        // Regra: só processa pedidos aguardando pagamento
         if (pedido.getStatus() != StatusPedido.AGUARDANDO_PAGAMENTO) {
             throw new RegraDeNegocioException(
                     "Pedido não está aguardando pagamento. Status atual: " + pedido.getStatus()
             );
         }
 
-        // verifica se já existe pagamento aprovado para este pedido
+        // Idempotência: verifica se já existe pagamento aprovado para este pedido
         pagamentoRepository.findByPedidoId(pedidoId).ifPresent(p -> {
             if (p.getStatusPagamento() == StatusPagamento.APROVADO) {
                 throw new RegraDeNegocioException("Este pedido já possui um pagamento aprovado.");
@@ -60,7 +61,7 @@ public class PagamentoService {
                 request.simularFalha()
         );
 
-        // Regiistra o pagamento no banco
+        // Registra o pagamento no banco
         Pagamento pagamento = Pagamento.builder()
                 .pedido(pedido)
                 .formaPagamento(pedido.getFormaPagamento())
@@ -77,14 +78,17 @@ public class PagamentoService {
         String statusPedidoFinal;
 
         if (resultado.status() == StatusPagamento.APROVADO) {
-            // Baixa estoque + avança para EM_PREPARO <--
+            // Baixa estoque + avança para EM_PREPARO
             pedidoService.confirmarPagamento(pedidoId, usuarioId, ip);
             statusPedidoFinal = StatusPedido.EM_PREPARO.name();
+
+            // Acumula pontos de fidelidade (se cliente tiver consentimento LGPD)
+            fidelidadeService.acumularPontos(pedido.getCliente().getId(), pedido.getTotal(), ip);
 
             auditService.registrar("PAGAMENTO_APROVADO", usuarioId, "PAGAMENTO", pagamento.getId(),
                     "Pedido " + pedidoId + " | TXN: " + resultado.transacaoId(), ip);
         } else {
-            // Pagamento recusado —> pedido continua AGUARDANDO_PAGAMENTO
+            // Pagamento recusado — pedido continua AGUARDANDO_PAGAMENTO
             statusPedidoFinal = StatusPedido.AGUARDANDO_PAGAMENTO.name();
 
             auditService.registrar("PAGAMENTO_RECUSADO", usuarioId, "PAGAMENTO", pagamento.getId(),
@@ -94,6 +98,7 @@ public class PagamentoService {
         return PagamentoResponse.from(pagamento, statusPedidoFinal);
     }
 
+    /** Consulta o pagamento de um pedido */
     @Transactional(readOnly = true)
     public PagamentoResponse buscarPorPedido(Long pedidoId) {
         var pagamento = pagamentoRepository.findByPedidoId(pedidoId)

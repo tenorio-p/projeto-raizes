@@ -10,7 +10,7 @@ public record FidelidadeResponse(
         String nomeCliente,
         Integer pontosAcumulados,
         Integer pontosResgatados,
-        Integer saldoDisponivel,
+        Integer saldoPontos,
         LocalDateTime atualizadoEm
 ) {
     public static FidelidadeResponse from(Fidelidade f) {
