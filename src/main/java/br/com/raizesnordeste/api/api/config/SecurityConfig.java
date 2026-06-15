@@ -1,7 +1,7 @@
 package br.com.raizesnordeste.api.api.config;
 
 import br.com.raizesnordeste.api.infrastructure.security.JwtAuthFilter;
-import lombok.RequiredArgsConstructor;
+import br.com.raizesnordeste.api.infrastructure.security.UserDetailsServiceImpl;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -14,89 +14,15 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
-import org.springframework.security.core.userdetails.UserDetailsPasswordService;
-import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
-import br.com.raizesnordeste.api.infrastructure.security.UserDetailsServiceImpl;
-
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
-@RequiredArgsConstructor
 public class SecurityConfig {
-
-    private final JwtAuthFilter jwtAuthFilter;
-    private final UserDetailsServiceImpl userDetailsService;
-
-    @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-        http
-                // Desabilita CSRF
-                .csrf(AbstractHttpConfigurer::disable)
-
-                // Política stateless — nenhuma sessão HTTP é criada
-                .sessionManagement(session ->
-                        session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
-                )
-
-                // Regras de autorização por rota
-                .authorizeHttpRequests(auth -> auth
-
-                        // ---- ROTAS PÚBLICAS ----
-                        .requestMatchers(HttpMethod.POST, "/auth/login", "/auth/registro").permitAll()
-                        .requestMatchers("/swagger-ui/**", "/v3/api-docs/**", "/swagger-ui.html").permitAll()
-                        .requestMatchers("/actuator/health").permitAll()
-
-                        // ---- UNIDADES ----
-                        // Qualquer autenticado pode listar unidades e ver cardápio
-                        .requestMatchers(HttpMethod.GET, "/unidades/**").authenticated()
-                        // Apenas ADMIN cria/edita unidades
-                        .requestMatchers(HttpMethod.POST, "/unidades/**").hasRole("ADMIN")
-                        .requestMatchers(HttpMethod.PUT, "/unidades/**").hasRole("ADMIN")
-
-                        // ---- PRODUTOS ----
-                        .requestMatchers(HttpMethod.GET, "/produtos/**").authenticated()
-                        .requestMatchers(HttpMethod.POST, "/produtos/**").hasRole("ADMIN")
-                        .requestMatchers(HttpMethod.PUT, "/produtos/**").hasRole("ADMIN")
-                        .requestMatchers(HttpMethod.DELETE, "/produtos/**").hasRole("ADMIN")
-
-                        // ---- ESTOQUE ----
-                        // GERENTE e ADMIN podem movimentar estoque
-                        .requestMatchers("/estoque/**").hasAnyRole("ADMIN", "GERENTE")
-
-                        // ---- PEDIDOS ----
-                        // Qualquer autenticado pode criar pedidos e listar os seus
-                        .requestMatchers(HttpMethod.POST, "/pedidos").authenticated()
-                        .requestMatchers(HttpMethod.GET, "/pedidos/**").authenticated()
-                        // Atualizar status: COZINHA, ATENDENTE, GERENTE ou ADMIN
-                        .requestMatchers(HttpMethod.PATCH, "/pedidos/**").hasAnyRole("ADMIN", "GERENTE", "ATENDENTE", "COZINHA")
-
-                        // ---- PAGAMENTOS ----
-                        .requestMatchers("/pagamentos/**").authenticated()
-
-                        // ---- FIDELIDADE ----
-                        .requestMatchers("/fidelidade/**").authenticated()
-
-                        // ---- ADMIN ----
-                        .requestMatchers("/usuarios/**").hasRole("ADMIN")
-
-                        // Qualquer outra rota exige autenticação
-                        .anyRequest().authenticated()
-                )
-
-                // Registra o filtro JWT ANTES do filtro padrão de autenticação
-                .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
-
-                // Configura o provedor de autenticação customizado
-                .authenticationProvider(authenticationProvider());
-
-        return http.build();
-    }
-
 
     @Bean
     public PasswordEncoder passwordEncoder() {
@@ -105,16 +31,69 @@ public class SecurityConfig {
 
 
     @Bean
-    public AuthenticationProvider authenticationProvider() {
-        DaoAuthenticationProvider provider = new DaoAuthenticationProvider((UserDetailsService) passwordEncoder());
-        provider.setUserDetailsPasswordService((UserDetailsPasswordService) userDetailsService);
+    public AuthenticationProvider authenticationProvider(
+            UserDetailsServiceImpl userDetailsService,
+            PasswordEncoder passwordEncoder) {
+
+        DaoAuthenticationProvider provider = new DaoAuthenticationProvider(userDetailsService);
+        provider.setPasswordEncoder(passwordEncoder);
+
         return provider;
     }
 
     @Bean
     public AuthenticationManager authenticationManager(
-            AuthenticationConfiguration config
-    ) throws Exception {
+            AuthenticationConfiguration config) throws Exception {
         return config.getAuthenticationManager();
+    }
+
+    @Bean
+    public SecurityFilterChain securityFilterChain(
+            HttpSecurity http,
+            JwtAuthFilter jwtAuthFilter,
+            AuthenticationProvider authenticationProvider) throws Exception {
+
+        http
+                .csrf(AbstractHttpConfigurer::disable)
+                .sessionManagement(session ->
+                        session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .authorizeHttpRequests(auth -> auth
+                        // Rotas públicas
+                        .requestMatchers(HttpMethod.POST, "/auth/login", "/auth/registro").permitAll()
+                        .requestMatchers("/swagger-ui/**", "/v3/api-docs/**", "/swagger-ui.html").permitAll()
+
+                        // Unidades
+                        .requestMatchers(HttpMethod.GET, "/unidades/**").authenticated()
+                        .requestMatchers(HttpMethod.POST, "/unidades/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.PUT, "/unidades/**").hasRole("ADMIN")
+
+                        // Produtos
+                        .requestMatchers(HttpMethod.GET, "/produtos/**").authenticated()
+                        .requestMatchers(HttpMethod.POST, "/produtos/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.PUT, "/produtos/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.DELETE, "/produtos/**").hasRole("ADMIN")
+
+                        // Estoque
+                        .requestMatchers("/estoque/**").hasAnyRole("ADMIN", "GERENTE")
+
+                        // Pedidos
+                        .requestMatchers(HttpMethod.POST, "/pedidos").authenticated()
+                        .requestMatchers(HttpMethod.GET, "/pedidos/**").authenticated()
+                        .requestMatchers(HttpMethod.PATCH, "/pedidos/**")
+                        .hasAnyRole("ADMIN", "GERENTE", "ATENDENTE", "COZINHA")
+
+                        // Pagamentos e Fidelidade
+                        .requestMatchers("/pagamentos/**").authenticated()
+                        .requestMatchers("/fidelidade/**").authenticated()
+
+                        // Admin
+                        .requestMatchers("/usuarios/**").hasRole("ADMIN")
+
+                        .anyRequest().authenticated()
+                )
+                .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
+                .authenticationProvider(authenticationProvider);
+
+        return http.build();
     }
 }

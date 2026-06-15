@@ -45,6 +45,7 @@ Antes de executar, certifique-se de ter instalado:
 - **Java 17+** → `java -version`
 - **Maven 3.8+** → `mvn -version`
 - **PostgreSQL 15+** rodando localmente
+- **Docker + Docker Compose** para banco
 
 ---
 
@@ -63,7 +64,36 @@ Acesse o PostgreSQL e execute:
 
 ```sql
 CREATE DATABASE raizes_nordeste;
+```"""
+
+-----> Suba o banco com Docker <-----
+
+```bash
+docker-compose up -d
 ```
+
+Isso cria automaticamente o banco `raizes_nordeste` com:
+
+- Usuário: `postgres`
+- Senha: `postgres`
+- Porta: `5432`
+
+Verifique se o container está em execução:
+
+```bash
+docker ps
+```
+
+Você deverá ver um container PostgreSQL rodando.
+
+Para testar a conexão:
+
+```bash
+docker exec postgres-raizes psql -U postgres -c "\l"
+```
+
+O banco `raizes_nordeste` deverá aparecer na lista.
+
 
 ### 3. Configure as variáveis de ambiente
 
