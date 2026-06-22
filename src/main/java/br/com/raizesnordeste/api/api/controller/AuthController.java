@@ -31,8 +31,7 @@ public class AuthController {
     )
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Login realizado com sucesso"),
-            @ApiResponse(responseCode = "409", description = "Credenciais inválidas",
-                    content = @Content(schema = @Schema(ref = "#/components/schemas/ErroResponse"))),
+            @ApiResponse(responseCode = "409", description = "Credenciais inválidas"),
             @ApiResponse(responseCode = "422", description = "Dados inválidos")
     })
     @PostMapping("/login")

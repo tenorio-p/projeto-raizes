@@ -27,4 +27,19 @@ public class ProdutoService {
                 .map(ProdutoResponse::from)
                 .orElseThrow(() -> new RecursoNaoEncontradoException("Produto", id));
     }
+
+    @org.springframework.transaction.annotation.Transactional
+    public ProdutoResponse criar(br.com.raizesnordeste.api.application.dto.request.CriarProdutoRequest request) {
+        var produto = br.com.raizesnordeste.api.domain.entity.Produto.builder()
+                .nome(request.nome())
+                .descricao(request.descricao())
+                .preco(request.preco())
+                .categoria(request.categoria())
+                .urlImagem(request.urlImagem())
+                .ativo(true)
+                .build();
+
+        produto = produtoRepository.save(produto);
+        return ProdutoResponse.from(produto);
+    }
 }

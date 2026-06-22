@@ -30,4 +30,16 @@ public class ProdutoController {
     public ResponseEntity<ProdutoResponse> buscarPorId(@PathVariable Long id) {
         return ResponseEntity.ok(produtoService.buscarPorId(id));
     }
+
+    @Operation(summary = "Criar produto", description = "Adiciona um novo produto ao catálogo. Apenas ADMIN.")
+    @PostMapping
+    @org.springframework.security.access.prepost.PreAuthorize("hasRole('ADMIN')")
+    public org.springframework.http.ResponseEntity<ProdutoResponse> criar(
+            @jakarta.validation.Valid @org.springframework.web.bind.annotation.RequestBody
+            br.com.raizesnordeste.api.application.dto.request.CriarProdutoRequest request
+    ) {
+        return org.springframework.http.ResponseEntity
+                .status(org.springframework.http.HttpStatus.CREATED)
+                .body(produtoService.criar(request));
+    }
 }

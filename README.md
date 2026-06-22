@@ -1,6 +1,6 @@
 # Raízes do Nordeste — API Back-End
 
-> Projeto Multidisciplinar — Trilha Back-End | UNINTER 2026
+> Projeto Multidisciplinar — Trilha Back-End | UNINTER 2026 :)
 
 API REST para rede de lanchonetes nordestinas com autenticação JWT, controle de estoque por unidade, pagamento mock, programa de fidelização e conformidade com LGPD.
 
@@ -14,8 +14,8 @@ API REST para rede de lanchonetes nordestinas com autenticação JWT, controle d
 | Spring Boot | 4.0.6 |
 | PostgreSQL | 15 |
 | Docker + Docker Compose | - |
-| Flyway | migrations |
-| JJWT | 0.12.6 |
+| Hibernate / JPA | criação automática do schema |
+| JJWT | 0.11.5 |
 | SpringDoc OpenAPI | 2.8.5 |
 
 ---
@@ -43,8 +43,6 @@ cd raizes-nordeste-api
 docker-compose up -d
 ```
 
-Isso cria automaticamente o banco `raizes_nordeste` **e insere todos os dados de teste** (usuários, produtos, estoque).
-
 Verifique:
 ```bash
 docker ps
@@ -53,7 +51,6 @@ docker ps
 
 ### 3. Configure as variáveis de ambiente
 
-Copie o arquivo de exemplo:
 ```bash
 cp .env.example .env
 ```
@@ -66,10 +63,12 @@ O `.env` padrão já funciona com o Docker sem alterações.
 mvn spring-boot:run
 ```
 
-Aguarde a mensagem:
+Aguarde:
 ```
 Started ApiApplication in X seconds
 ```
+
+O Hibernate cria automaticamente todas as tabelas a partir das entidades JPA (`ddl-auto=update`). Não é necessário rodar nenhum script SQL.
 
 ### 5. Acesse a documentação
 
@@ -79,74 +78,137 @@ http://localhost:8080/swagger-ui.html
 
 ---
 
-## Usuários de teste
+## Setup inicial de dados (banco começa vazio)
 
-Todos com a senha: **`Senha@123`**
+Como o projeto não usa seed automático, é necessário cadastrar os dados iniciais via API. Siga esta ordem **exatamente**:
 
-| Email | Perfil |
-|---|---|
-| `admin@raizes.com` | ADMIN |
-| `maria@email.com` | CLIENTE (com fidelidade) |
-| `joao@raizes.com` | ATENDENTE |
-| `ana@raizes.com` | GERENTE |
-| `cozinha@raizes.com` | COZINHA |
-| `pedro@email.com` | CLIENTE |
+### Passo 1 — Criar o usuário administrador
+
+```http
+POST /auth/registro
+{
+  "nome": "Admin Sistema",
+  "email": "admin@raizes.com",
+  "senha": "Senha@123",
+  "perfil": "ADMIN",
+  "consentimentoLgpd": false
+}
+```
+
+A resposta já traz o `accessToken`. Copie-o, clique em **Authorize** no Swagger e informe `Bearer {token}` — todos os passos seguintes usam esse token.
+
+### Passo 2 — Criar uma unidade
+
+```http
+POST /unidades
+{
+  "nome": "Raízes do Nordeste - Recife Centro",
+  "cidade": "Recife",
+  "estado": "PE",
+  "endereco": "Rua da Aurora, 100",
+  "telefone": "(81) 99999-0001"
+}
+```
+
+Anote o `id` retornado (normalmente `1`).
+
+### Passo 3 — Criar produtos
+
+```http
+POST /produtos
+{
+  "nome": "Tapioca Simples",
+  "descricao": "Tapioca com manteiga de garrafa",
+  "preco": 8.90,
+  "categoria": "Tapioca"
+}
+```
+
+Repita para quantos produtos quiser testar. Anote os `id`s retornados.
+
+### Passo 4 — Lançar estoque do produto na unidade
+
+```http
+POST /estoque/unidade/{unidadeId}/movimentar
+{
+  "produtoId": 1,
+  "quantidade": 50,
+  "tipo": "ENTRADA",
+  "motivo": "Estoque inicial"
+}
+```
+
+Repita para cada produto cadastrado.
+
+### Passo 5 — Criar os demais usuários de teste
+
+```http
+POST /auth/registro
+```
+
+Repita trocando `perfil` e `email`:
+
+| Email | Perfil | consentimentoLgpd |
+|---|---|---|
+| `maria@email.com` | CLIENTE | true |
+| `joao@raizes.com` | ATENDENTE | false |
+| `ana@raizes.com` | GERENTE | false |
+| `cozinha@raizes.com` | COZINHA | false |
+
+Todos com a senha `Senha@123`.
+
+> A partir daqui, o ambiente está pronto para o fluxo completo de pedidos.
 
 ---
 
-## Fluxo crítico para teste (Fluxo A)
+## Fluxo crítico (Fluxo A)
 
-Execute na ordem:
-
-### 1. Login
-```
+### 1. Login do cliente
+```http
 POST /auth/login
 { "email": "maria@email.com", "senha": "Senha@123" }
 ```
-Copie o `accessToken` → clique **Authorize** no Swagger → `Bearer {token}`
 
-### 2. Cardápio da unidade
-```
+### 2. Ver cardápio da unidade
+```http
 GET /unidades/1/cardapio
 ```
 
 ### 3. Criar pedido
-```
+```http
 POST /pedidos
 {
   "canalPedido": "APP",
   "unidadeId": 1,
   "itens": [
-    { "produtoId": 1, "quantidade": 2 },
-    { "produtoId": 6, "quantidade": 1 }
+    { "produtoId": 1, "quantidade": 2 }
   ],
   "formaPagamento": "PIX"
 }
 ```
 
 ### 4. Processar pagamento (aprovado)
-```
+```http
 POST /pagamentos/{pedidoId}/processar
 { "simularFalha": false }
 ```
+→ Estoque é baixado e pedido avança para `EM_PREPARO`.
 
-### 5. Processar pagamento (recusado)
-```
-POST /pagamentos/{pedidoId}/processar
+### 5. Processar pagamento (recusado) — cenário negativo
+```http
+POST /pagamentos/{outroPedidoId}/processar
 { "simularFalha": true }
 ```
 
-### 6. Atualizar status (login como cozinha primeiro)
-```
-POST /auth/login
-{ "email": "cozinha@raizes.com", "senha": "Senha@123" }
-
+### 6. Cozinha atualiza o status
+Login como `cozinha@raizes.com`, depois:
+```http
 PATCH /pedidos/{pedidoId}/status
 { "novoStatus": "PRONTO" }
 ```
 
 ### 7. Filtrar pedidos por canal
-```
+```http
 GET /pedidos?canalPedido=APP&page=0&size=10
 ```
 
@@ -154,22 +216,16 @@ GET /pedidos?canalPedido=APP&page=0&size=10
 
 ## Testes com Postman
 
-Importe a coleção:
-```
-postman/Raizes_do_Nordeste.postman_collection.json
-```
+A coleção está em `postman/Raizes_do_Nordeste.postman_collection.json` e já inclui o **setup completo do zero** (criação de admin, unidade, produto, estoque, demais usuários) seguido dos 18 cenários de teste do plano de testes.
 
-Configure o ambiente:
-- `baseUrl` = `http://localhost:8080`
+### Como importar
 
-Execute na ordem T01 → T18.
+1. Abra o Postman → **Import** → selecione o arquivo da coleção
+2. Crie um **Environment** com a variável `baseUrl` = `http://localhost:8080`
+3. Selecione esse Environment
+4. Execute as pastas **na ordem em que aparecem**, de cima para baixo
 
----
-
-## Links
-
-- Swagger: `http://localhost:8080/swagger-ui.html`
-- Repositório da coleção Postman: `/postman/Raizes_do_Nordeste.postman_collection.json`
+Todas as variáveis (`token`, `unidadeId`, `produtoId`, `pedidoId`, etc.) são capturadas automaticamente pelos scripts de cada requisição — não é necessário editar nada manualmente.
 
 ---
 
@@ -194,3 +250,20 @@ src/main/java/br/com/raizesnordeste/api/
     ├── mock/          # PagamentoMockService (gateway externo simulado)
     └── security/      # JwtService, JwtAuthFilter, UserDetailsServiceImpl
 ```
+
+---
+
+## Persistência de dados
+
+O schema do banco é gerado automaticamente pelo Hibernate a partir das anotações `@Entity` das classes em `domain/entity/` (`spring.jpa.hibernate.ddl-auto=update`). Não há migrations versionadas neste projeto — opção feita para manter a configuração simples, adequada ao escopo do trabalho.
+
+---
+
+## Segurança e LGPD
+
+- Senhas armazenadas com **BCrypt** — nunca em texto puro
+- Autenticação via **JWT Bearer Token**
+- Autorização por **perfil/role** em todos os endpoints protegidos
+- Dados pessoais nunca expostos nas respostas (sem campo `senha`)
+- Programa de fidelização só ativo com **consentimento LGPD explícito**
+- **Auditoria** de ações sensíveis gravada na tabela `audit_logs`

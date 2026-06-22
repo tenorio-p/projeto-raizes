@@ -43,4 +43,16 @@ public class UnidadeController {
     public ResponseEntity<List<CardapioItemResponse>> cardapio(@PathVariable Long id) {
         return ResponseEntity.ok(estoqueService.listarCardapio(id));
     }
+
+    @Operation(summary = "Criar unidade", description = "Cria uma nova unidade da rede. Apenas ADMIN.")
+    @PostMapping
+    @org.springframework.security.access.prepost.PreAuthorize("hasRole('ADMIN')")
+    public org.springframework.http.ResponseEntity<UnidadeResponse> criar(
+            @jakarta.validation.Valid @org.springframework.web.bind.annotation.RequestBody
+            br.com.raizesnordeste.api.application.dto.request.CriarUnidadeRequest request
+    ) {
+        return org.springframework.http.ResponseEntity
+                .status(org.springframework.http.HttpStatus.CREATED)
+                .body(unidadeService.criar(request));
+    }
 }

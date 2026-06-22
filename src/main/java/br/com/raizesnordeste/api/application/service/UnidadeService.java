@@ -27,4 +27,20 @@ public class UnidadeService {
                 .map(UnidadeResponse::from)
                 .orElseThrow(() -> new RecursoNaoEncontradoException("Unidade", id));
     }
+
+
+    @org.springframework.transaction.annotation.Transactional
+    public UnidadeResponse criar(br.com.raizesnordeste.api.application.dto.request.CriarUnidadeRequest request) {
+        var unidade = br.com.raizesnordeste.api.domain.entity.Unidade.builder()
+                .nome(request.nome())
+                .cidade(request.cidade())
+                .estado(request.estado())
+                .endereco(request.endereco())
+                .telefone(request.telefone())
+                .ativa(true)
+                .build();
+
+        unidade = unidadeRepository.save(unidade);
+        return UnidadeResponse.from(unidade);
+    }
 }
